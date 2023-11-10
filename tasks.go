@@ -14,8 +14,8 @@ interface and flexible control over when tasks are executed.
 
 Below is an example of starting the scheduler and registering a new task that runs every 30 seconds.
 
-	// Start the Scheduler
-	scheduler := tasks.New()
+	// Start the StdScheduler
+	scheduler := tasks.NewStdScheduler()
 	defer scheduler.Stop()
 
 	// Add a task
@@ -81,11 +81,8 @@ package tasks
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
-
-	"github.com/rs/xid"
 )
 
 // Task contains the scheduled task details and control mechanisms. This struct is used during the creation of tasks.
@@ -173,215 +170,6 @@ func (t *Task) safeOps(f func()) {
 	defer t.Unlock()
 
 	f()
-}
-
-// Scheduler stores the internal task list and provides an interface for task management.
-type Scheduler struct {
-	sync.RWMutex
-
-	// tasks is the internal task list used to store tasks that are currently scheduled.
-	tasks map[string]*Task
-}
-
-var (
-	// ErrIDInUse is returned when a Task ID is specified but already used.
-	ErrIDInUse = fmt.Errorf("ID already used")
-)
-
-// New will create a new scheduler instance that allows users to create and manage tasks.
-func New() *Scheduler {
-	s := &Scheduler{}
-	s.tasks = make(map[string]*Task)
-	return s
-}
-
-// Add will add a task to the task list and schedule it. Once added, tasks will wait the defined time interval and then
-// execute. This means a task with a 15 second interval will be triggered 15 seconds after Add is complete. Not before
-// or after (excluding typical machine time jitter).
-//
-//	// Add a task
-//	id, err := scheduler.Add(&tasks.Task{
-//		Interval: time.Duration(30 * time.Second),
-//		TaskFunc: func() error {
-//			// Put your logic here
-//		}(),
-//		ErrFunc: func(err error) {
-//			// Put custom error handling here
-//		}(),
-//	})
-//	if err != nil {
-//		// Do stuff
-//	}
-func (schd *Scheduler) Add(t *Task) (string, error) {
-	id := xid.New()
-	err := schd.AddWithID(id.String(), t)
-	if err == ErrIDInUse {
-		return schd.Add(t)
-	}
-	return id.String(), err
-}
-
-// AddWithID will add a task with an ID to the task list and schedule it. It will return an error if the ID is in-use.
-// Once added, tasks will wait the defined time interval and then execute. This means a task with a 15 second interval
-// will be triggered 15 seconds after Add is complete. Not before or after (excluding typical machine time jitter).
-//
-//	// Add a task
-//	id := xid.New()
-//	err := scheduler.AddWithID(id, &tasks.Task{
-//		Interval: time.Duration(30 * time.Second),
-//		TaskFunc: func() error {
-//			// Put your logic here
-//		}(),
-//		ErrFunc: func(err error) {
-//			// Put custom error handling here
-//		}(),
-//	})
-//	if err != nil {
-//		// Do stuff
-//	}
-func (schd *Scheduler) AddWithID(id string, t *Task) error {
-	// Check if TaskFunc is nil before doing anything
-	if t.TaskFunc == nil && t.FuncWithTaskContext == nil {
-		return fmt.Errorf("task function cannot be nil")
-	}
-
-	// Ensure Interval is never 0, this would cause Timer to panic
-	if t.Interval <= time.Duration(0) {
-		return fmt.Errorf("task interval must be defined")
-	}
-
-	// Create Context used to cancel downstream Goroutines
-	t.ctx, t.cancel = context.WithCancel(context.Background())
-
-	// Add id to TaskContext
-	t.TaskContext.id = id
-
-	// Check id is not in use, then add to task list and start background task
-	schd.Lock()
-	defer schd.Unlock()
-	if _, ok := schd.tasks[id]; ok {
-		return ErrIDInUse
-	}
-	t.id = id
-
-	// To make up for bad design decisions we need to copy the task for execution
-	task := t.Clone()
-
-	// Add task to schedule
-	schd.tasks[t.id] = task
-	schd.scheduleTask(task)
-
-	return nil
-}
-
-// Del will unschedule the specified task and remove it from the task list. Deletion will prevent future invocations of
-// a task, but not interrupt a trigged task.
-func (schd *Scheduler) Del(name string) {
-	// Grab task from task list
-	t, err := schd.Lookup(name)
-	if err != nil {
-		return
-	}
-
-	// Stop the task
-	defer t.cancel()
-
-	t.Lock()
-	defer t.Unlock()
-
-	if t.timer != nil {
-		defer t.timer.Stop()
-	}
-
-	// Remove from task list
-	schd.Lock()
-	defer schd.Unlock()
-	delete(schd.tasks, name)
-}
-
-// Lookup will find the specified task from the internal task list using the task ID provided.
-//
-// The returned task should be treated as read-only, and not modified outside of this package. Doing so, may cause
-// panics.
-func (schd *Scheduler) Lookup(name string) (*Task, error) {
-	schd.RLock()
-	defer schd.RUnlock()
-	t, ok := schd.tasks[name]
-	if ok {
-		return t.Clone(), nil
-	}
-	return t, fmt.Errorf("could not find task within the task list")
-}
-
-// Tasks is used to return a copy of the internal tasks map.
-//
-// The returned task should be treated as read-only, and not modified outside of this package. Doing so, may cause
-// panics.
-func (schd *Scheduler) Tasks() map[string]*Task {
-	schd.RLock()
-	defer schd.RUnlock()
-	m := make(map[string]*Task)
-	for k, v := range schd.tasks {
-		m[k] = v.Clone()
-	}
-	return m
-}
-
-// Stop is used to unschedule and delete all tasks owned by the scheduler instance.
-func (schd *Scheduler) Stop() {
-	tt := schd.Tasks()
-	for n := range tt {
-		schd.Del(n)
-	}
-}
-
-// scheduleTask creates the underlying scheduled task. If StartAfter is set, this routine will wait until the
-// time specified.
-func (schd *Scheduler) scheduleTask(t *Task) {
-	_ = time.AfterFunc(time.Until(t.StartAfter), func() {
-		var err error
-
-		// Verify if task has been cancelled before scheduling
-		t.safeOps(func() {
-			err = t.ctx.Err()
-		})
-		if err != nil {
-			// Task has been cancelled, do not schedule
-			return
-		}
-
-		// Schedule task
-		t.safeOps(func() {
-			t.timer = time.AfterFunc(t.Interval, func() { schd.execTask(t) })
-		})
-	})
-}
-
-// execTask is the underlying scheduler, it is used to trigger and execute tasks.
-func (schd *Scheduler) execTask(t *Task) {
-	go func() {
-		var err error
-		if t.FuncWithTaskContext != nil {
-			err = t.FuncWithTaskContext(t.TaskContext)
-		} else {
-			err = t.TaskFunc()
-		}
-		if err != nil && (t.ErrFunc != nil || t.ErrFuncWithTaskContext != nil) {
-			if t.ErrFuncWithTaskContext != nil {
-				go t.ErrFuncWithTaskContext(t.TaskContext, err)
-			} else {
-				go t.ErrFunc(err)
-			}
-		}
-		if t.RunOnce {
-			defer schd.Del(t.id)
-		}
-	}()
-	if !t.RunOnce {
-		t.safeOps(func() {
-			t.timer.Reset(t.Interval)
-		})
-	}
 }
 
 // ID will return the task ID. This is the same as the ID generated by the scheduler when adding a task.
