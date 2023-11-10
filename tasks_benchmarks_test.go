@@ -7,12 +7,12 @@ import (
 
 func BenchmarkTasks(b *testing.B) {
 	// Create base scheduler to use
-	scheduler := New()
+	scheduler := NewStdScheduler(StdSchedulerOptions{})
 	defer scheduler.Stop()
 
 	// Setup a single task for re-use
 	taskID, err := scheduler.Add(&Task{
-		Interval: time.Duration(1 * time.Minute),
+		Interval: 1 * time.Minute,
 		TaskFunc: func() error { return nil },
 		ErrFunc:  func(e error) {},
 	})
