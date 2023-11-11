@@ -10,6 +10,14 @@ import (
 	"github.com/rs/xid"
 )
 
+var (
+	// ErrIDInUse is returned when a Task ID is specified but already used.
+	ErrIDInUse = fmt.Errorf("ID already used")
+	// ErrRetryOnErrorIntervalEmpty is returned when retry on error interval is not set
+	// for run once task with retries on error.
+	ErrRetryOnErrorIntervalEmpty = errors.New("retry on error interval is empty")
+)
+
 // StdScheduler stores the internal task list and provides an interface for task management.
 type StdScheduler struct {
 	sync.RWMutex
@@ -94,6 +102,10 @@ func (s *StdScheduler) AddWithID(id string, t *Task) error {
 		return fmt.Errorf("task interval must be defined")
 	}
 
+	if t.RunOnce && t.RetriesOnError > 0 && t.RetryOnErrorInterval <= time.Duration(0) {
+		return ErrRetryOnErrorIntervalEmpty
+	}
+
 	// Create Context used to cancel downstream Goroutines
 	t.ctx, t.cancel = context.WithCancel(context.Background())
 
@@ -157,11 +169,6 @@ func (s *StdScheduler) Lookup(name string) (*Task, error) {
 	return t, fmt.Errorf("could not find task within the task list")
 }
 
-var (
-	// ErrIDInUse is returned when a Task ID is specified but already used.
-	ErrIDInUse = fmt.Errorf("ID already used")
-)
-
 // Tasks is used to return a copy of the internal tasks map.
 //
 // The returned task should be treated as read-only, and not modified outside of this package. Doing so, may cause
@@ -223,14 +230,28 @@ func (s *StdScheduler) execTask(t *Task) {
 		} else {
 			err = t.TaskFunc()
 		}
-		if err != nil && (t.ErrFunc != nil || t.ErrFuncWithTaskContext != nil) {
+
+		deleteTask := true
+
+		if err != nil {
 			if t.ErrFuncWithTaskContext != nil {
 				go t.ErrFuncWithTaskContext(t.TaskContext, err)
 			} else {
 				go t.ErrFunc(err)
 			}
+
+			if t.RunOnce && t.RetriesOnError > 0 {
+				deleteTask = false
+
+				t.safeOps(func() {
+					t.RetriesOnError--
+					t.timer.Reset(t.RetryOnErrorInterval)
+				})
+			} else {
+				deleteTask = true
+			}
 		}
-		if t.RunOnce {
+		if t.RunOnce && deleteTask {
 			defer s.Del(t.id)
 		}
 	}()
