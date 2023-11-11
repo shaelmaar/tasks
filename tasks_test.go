@@ -795,6 +795,42 @@ func TestRetriesOnError(t *testing.T) {
 	})
 }
 
+func TestTaskLimit(t *testing.T) {
+	scheduler := NewStdScheduler(StdSchedulerOptions{TaskLimit: 5})
+
+	t.Run("Verify TaskLimit applies", func(t *testing.T) {
+		assert := assertions.New(t)
+
+		taskIDs := make([]string, 0, 10)
+
+		for i := 0; i < 10; i++ {
+			id, err := scheduler.Add(&Task{
+				Interval: 200 * time.Millisecond,
+				RunOnce:  true,
+				TaskFunc: func() error {
+					return nil
+				},
+				ErrFunc: func(err error) {},
+			})
+			if i >= 5 {
+				assert.ErrorIs(err, ErrTaskLimitExceeded)
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected errors when scheduling a valid task - %s", err)
+				}
+			}
+
+			taskIDs = append(taskIDs, id)
+		}
+
+		t.Cleanup(func() {
+			for _, id := range taskIDs {
+				scheduler.Del(id)
+			}
+		})
+	})
+}
+
 func TestSchedulerExtras(t *testing.T) {
 	// Create a base scheduler to use
 	scheduler := NewStdScheduler(StdSchedulerOptions{})
