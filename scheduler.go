@@ -16,6 +16,8 @@ var (
 	// ErrRetryOnErrorIntervalEmpty is returned when retry on error interval is not set
 	// for run once task with retries on error.
 	ErrRetryOnErrorIntervalEmpty = errors.New("retry on error interval is empty")
+	// ErrTaskLimitExceeded is returned when number of tasks exceeds task limit.
+	ErrTaskLimitExceeded = errors.New("task limit exceeded")
 )
 
 // StdScheduler stores the internal task list and provides an interface for task management.
@@ -30,7 +32,8 @@ type StdScheduler struct {
 }
 
 type StdSchedulerOptions struct {
-	WorkerLimit int32
+	WorkerLimit int
+	TaskLimit   int
 }
 
 // NewStdScheduler will create a new std scheduler instance that allows users to create and manage tasks.
@@ -44,6 +47,7 @@ func NewStdScheduler(opts StdSchedulerOptions) *StdScheduler {
 	return &StdScheduler{
 		taskSem: taskSem,
 		tasks:   make(map[string]*Task),
+		opts:    opts,
 	}
 }
 
@@ -115,6 +119,10 @@ func (s *StdScheduler) AddWithID(id string, t *Task) error {
 	// Check id is not in use, then add to task list and start background task
 	s.Lock()
 	defer s.Unlock()
+	if s.opts.TaskLimit > 0 && len(s.tasks) >= s.opts.TaskLimit {
+		return ErrTaskLimitExceeded
+	}
+
 	if _, ok := s.tasks[id]; ok {
 		return ErrIDInUse
 	}
