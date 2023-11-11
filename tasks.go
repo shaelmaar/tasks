@@ -117,6 +117,12 @@ type Task struct {
 	// the task self deleting.
 	RunOnce bool
 
+	// RetriesOnError if greater than 0, task will be rescheduled in case of error on execution.
+	RetriesOnError int
+
+	// RetryOnErrorInterval interval for another attempt execution.
+	RetryOnErrorInterval time.Duration
+
 	// StartAfter is used to specify a start time for the scheduler. When set, tasks will wait for the specified
 	// time to start the schedule timer.
 	StartAfter time.Time
@@ -190,6 +196,8 @@ func (t *Task) Clone() *Task {
 		task.Interval = t.Interval
 		task.StartAfter = t.StartAfter
 		task.RunOnce = t.RunOnce
+		task.RetriesOnError = t.RetriesOnError
+		task.RetryOnErrorInterval = t.RetryOnErrorInterval
 		task.id = t.id
 		task.ctx = t.ctx
 		task.cancel = t.cancel
