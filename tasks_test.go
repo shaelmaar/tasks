@@ -35,6 +35,7 @@ func TestTasksInterface(t *testing.T) {
 		task: &Task{
 			Interval: 1 * time.Second,
 			TaskFunc: func() error { return nil },
+			ErrFunc:  func(error) {},
 		},
 	})
 
@@ -43,6 +44,7 @@ func TestTasksInterface(t *testing.T) {
 		task: &Task{
 			Interval: 1 * time.Second,
 			TaskFunc: func() error { return nil },
+			ErrFunc:  func(error) {},
 		},
 		id: xid.New().String(),
 	})
@@ -91,6 +93,7 @@ func TestTasksInterface(t *testing.T) {
 			Interval:   1 * time.Second,
 			TaskFunc:   func() error { return nil },
 			StartAfter: time.Now().Add(1 * time.Second),
+			ErrFunc:    func(error) {},
 		},
 	})
 
@@ -100,6 +103,7 @@ func TestTasksInterface(t *testing.T) {
 			Interval:   1 * time.Second,
 			TaskFunc:   func() error { return nil },
 			StartAfter: time.Now().Add(-1 * time.Minute),
+			ErrFunc:    func(error) {},
 		},
 	})
 
@@ -109,6 +113,7 @@ func TestTasksInterface(t *testing.T) {
 			Interval: 1 * time.Second,
 			TaskFunc: func() error { return nil },
 			RunOnce:  true,
+			ErrFunc:  func(error) {},
 		},
 	})
 
@@ -116,6 +121,7 @@ func TestTasksInterface(t *testing.T) {
 		name: "No Interval",
 		task: &Task{
 			TaskFunc: func() error { return nil },
+			ErrFunc:  func(error) {},
 		},
 		addErr: true,
 	})
@@ -266,6 +272,9 @@ func TestTaskExecution(t *testing.T) {
 			tc.cancel()
 			return nil
 		},
+		ErrFunc: func(e error) {
+			t.Errorf("ErrFunc should not be called")
+		},
 	}
 	tt = append(tt, tc3)
 
@@ -323,6 +332,9 @@ func TestTaskExecution(t *testing.T) {
 			tc6.cancel()
 			return nil
 		},
+		ErrFunc: func(e error) {
+			t.Errorf("ErrFunc should not be called")
+		},
 	}
 	tt = append(tt, tc6)
 
@@ -344,6 +356,9 @@ func TestTaskExecution(t *testing.T) {
 			}
 			tc7.cancel()
 			return nil
+		},
+		ErrFunc: func(e error) {
+			t.Errorf("ErrFunc should not be called")
 		},
 	}
 	tt = append(tt, tc7)
