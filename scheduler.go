@@ -16,6 +16,8 @@ var (
 	// ErrRetryOnErrorIntervalEmpty is returned when retry on error interval is not set
 	// for run once task with retries on error.
 	ErrRetryOnErrorIntervalEmpty = errors.New("retry on error interval is empty")
+	// ErrIntervalEmpty is returned when interval is not set for cron task (not run once task).
+	ErrIntervalEmpty = errors.New("interval is empty")
 	// ErrTaskLimitExceeded is returned when number of tasks exceeds task limit.
 	ErrTaskLimitExceeded = errors.New("task limit exceeded")
 )
@@ -101,9 +103,8 @@ func (s *StdScheduler) AddWithID(id string, t *Task) error {
 		return fmt.Errorf("task function cannot be nil")
 	}
 
-	// Ensure Interval is never 0, this would cause Timer to panic
-	if t.Interval <= time.Duration(0) {
-		return fmt.Errorf("task interval must be defined")
+	if !t.RunOnce && t.Interval <= time.Duration(0) {
+		return ErrIntervalEmpty
 	}
 
 	if t.RunOnce && t.RetriesOnError > 0 && t.RetryOnErrorInterval <= time.Duration(0) {
