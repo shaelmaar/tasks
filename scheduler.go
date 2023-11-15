@@ -18,6 +18,10 @@ var (
 	ErrRetryOnErrorIntervalEmpty = errors.New("retry on error interval is empty")
 	// ErrIntervalEmpty is returned when interval is not set for cron task (not run once task).
 	ErrIntervalEmpty = errors.New("interval is empty")
+	// ErrTaskExecFunctionsNotSet is returned when task execute functions are not set.
+	ErrTaskExecFunctionsNotSet = errors.New("task functions are empty")
+	// ErrTaskErrFunctionsNotSet is returned when task err functions are not set.
+	ErrTaskErrFunctionsNotSet = errors.New("err functions are empty")
 	// ErrTaskLimitExceeded is returned when number of tasks exceeds task limit.
 	ErrTaskLimitExceeded = errors.New("task limit exceeded")
 )
@@ -100,7 +104,11 @@ func (s *StdScheduler) Add(t *Task) (string, error) {
 func (s *StdScheduler) AddWithID(id string, t *Task) error {
 	// Check if TaskFunc is nil before doing anything
 	if t.TaskFunc == nil && t.FuncWithTaskContext == nil {
-		return fmt.Errorf("task function cannot be nil")
+		return ErrTaskExecFunctionsNotSet
+	}
+
+	if t.ErrFunc == nil && t.ErrFuncWithTaskContext == nil {
+		return ErrTaskErrFunctionsNotSet
 	}
 
 	if !t.RunOnce && t.Interval <= time.Duration(0) {
