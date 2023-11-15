@@ -178,6 +178,16 @@ func (s *StdScheduler) Lookup(name string) (*Task, error) {
 	return t, fmt.Errorf("could not find task within the task list")
 }
 
+// Has will return true if specified task is present.
+func (s *StdScheduler) Has(name string) bool {
+	s.RLock()
+	defer s.RUnlock()
+
+	_, ok := s.tasks[name]
+
+	return ok
+}
+
 // Tasks is used to return a copy of the internal tasks map.
 //
 // The returned task should be treated as read-only, and not modified outside of this package. Doing so, may cause
