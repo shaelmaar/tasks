@@ -172,6 +172,17 @@ func TestTasksInterface(t *testing.T) {
 				}
 			})
 
+			t.Run(tc.name+" - Has", func(t *testing.T) {
+				// Verify if task exists
+				exists := scheduler.Has(id)
+				if !exists && !tc.addErr {
+					t.Errorf("Unable to find newly scheduled task with Has - %s", err)
+				}
+				if exists && tc.addErr {
+					t.Errorf("Found task that should not exist - %s", id)
+				}
+			})
+
 			t.Run(tc.name+" - Task List", func(t *testing.T) {
 				// Check Task Map
 				tasks := scheduler.Tasks()
