@@ -1,14 +1,18 @@
 package tasks
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"testing"
 	"time"
 
 	"github.com/rs/xid"
 	assertions "github.com/stretchr/testify/assert"
+
+	"github.com/shaelmaar/tasks/logger"
 )
 
 type InterfaceTestCase struct {
@@ -855,6 +859,52 @@ func TestTaskLimit(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestSchedulerLogger(t *testing.T) {
+	var b bytes.Buffer
+
+	simpleLogger := logger.NewSimpleLogger(log.New(&b, "", log.LstdFlags), logger.LevelDebug)
+
+	scheduler := NewStdScheduler(StdSchedulerOptions{Logger: simpleLogger})
+
+	t.Run("Verify Logger applies", func(t *testing.T) {
+		assert := assertions.New(t)
+
+		doneCh := make(chan struct{})
+
+		id := xid.New().String()
+
+		startAfter := time.Now().Add(200 * time.Millisecond)
+		err := scheduler.AddWithID(id, &Task{
+			StartAfter: startAfter,
+			RunOnce:    true,
+			TaskFunc: func() error {
+				doneCh <- struct{}{}
+
+				return nil
+			},
+			ErrFunc: func(err error) {},
+		})
+		assert.NoError(err)
+
+		t.Cleanup(func() {
+			scheduler.Del(id)
+		})
+
+		select {
+		case <-doneCh:
+			// sleep to wait for log write.
+			time.Sleep(10 * time.Millisecond)
+		case <-time.After(time.Second):
+			t.Errorf("StdScheduler failed to execute the scheduled task (%s) run within 1 second", id)
+		}
+
+		assert.Contains(b.String(), fmt.Sprintf("task (id: %s) has been scheduled at %s",
+			id, startAfter.Format(time.RFC3339)))
+		assert.Contains(b.String(), fmt.Sprintf("task (id: %s) has been successfully executed", id))
+	})
+
 }
 
 func TestSchedulerExtras(t *testing.T) {

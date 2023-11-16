@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/rs/xid"
+
+	"github.com/shaelmaar/tasks/logger"
 )
 
 var (
@@ -40,6 +42,7 @@ type StdScheduler struct {
 type StdSchedulerOptions struct {
 	WorkerLimit int
 	TaskLimit   int
+	Logger      logger.Logger
 }
 
 // NewStdScheduler will create a new std scheduler instance that allows users to create and manage tasks.
@@ -48,6 +51,10 @@ func NewStdScheduler(opts StdSchedulerOptions) *StdScheduler {
 
 	if opts.WorkerLimit > 0 {
 		taskSem = make(chan struct{}, opts.WorkerLimit)
+	}
+
+	if opts.Logger != nil {
+		logger.SetDefault(opts.Logger)
 	}
 
 	return &StdScheduler{
@@ -78,6 +85,8 @@ func (s *StdScheduler) Add(t *Task) (string, error) {
 	id := xid.New()
 	err := s.AddWithID(id.String(), t)
 	if errors.Is(err, ErrIDInUse) {
+		logger.Infof("id '%s' is already in use, another attempt to add", id.String())
+
 		return s.Add(t)
 	}
 	return id.String(), err
@@ -242,6 +251,8 @@ func (s *StdScheduler) scheduleTask(t *Task) {
 			t.timer = time.AfterFunc(t.Interval, func() { s.execTask(t) })
 		})
 	})
+
+	logger.Debugf("task (id: %s) has been scheduled at %s", t.id, t.StartAfter.Format(time.RFC3339))
 }
 
 // execTask is the underlying scheduler, it is used to trigger and execute tasks.
@@ -261,6 +272,8 @@ func (s *StdScheduler) execTask(t *Task) {
 		deleteTask := true
 
 		if err != nil {
+			logger.Errorf("task (id: %s, retries left: %d) failed: %s", t.id, t.RetriesOnError, err.Error())
+
 			if t.ErrFuncWithTaskContext != nil {
 				go t.ErrFuncWithTaskContext(t.TaskContext, err)
 			} else {
@@ -277,6 +290,8 @@ func (s *StdScheduler) execTask(t *Task) {
 			} else {
 				deleteTask = true
 			}
+		} else {
+			logger.Debugf("task (id: %s) has been successfully executed", t.id)
 		}
 		if t.RunOnce && deleteTask {
 			defer s.Del(t.id)
