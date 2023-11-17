@@ -243,7 +243,7 @@ func TestTaskExecution(t *testing.T) {
 	tc2.ctx, tc2.cancel = context.WithCancel(context.Background())
 	tc2.task = &Task{
 		Interval:    1 * time.Second,
-		TaskContext: TaskContext{Context: tc2.ctx},
+		TaskContext: TaskContext{Context: tc2.ctx, Cancel: tc2.cancel},
 		FuncWithTaskContext: func(taskCtx TaskContext) error {
 			if taskCtx.Context != tc2.ctx {
 				t.Logf("TaskContext.Context does not match expected context")
@@ -253,7 +253,7 @@ func TestTaskExecution(t *testing.T) {
 			return fmt.Errorf("fake error")
 		},
 		ErrFuncWithTaskContext: func(taskCtx TaskContext, e error) {
-			if taskCtx == tc2.task.TaskContext && e != nil {
+			if e != nil {
 				tc2.cancel()
 			}
 			if !errors.Is(taskCtx.Context.Err(), context.Canceled) {
@@ -683,6 +683,59 @@ func TestSchedulerDoesntRun(t *testing.T) {
 				}
 				t.Errorf("StdScheduler failed to execute the scheduled tasks %d run within 2 seconds", i)
 			}
+		}
+	})
+}
+
+func TestTaskCancellation(t *testing.T) {
+	scheduler := NewStdScheduler(StdSchedulerOptions{})
+
+	t.Run("Verify Cancelling interrupts task execution", func(t *testing.T) {
+		assert := assertions.New(t)
+
+		doneCh := make(chan struct{})
+		execStartedCh := make(chan struct{})
+
+		// Setup A task
+		id, err := scheduler.Add(&Task{
+			RunOnce:    true,
+			StartAfter: time.Now(),
+			FuncWithTaskContext: func(taskCtx TaskContext) error {
+				go func() {
+					execStartedCh <- struct{}{}
+				}()
+
+				select {
+				case <-taskCtx.Context.Done():
+					return taskCtx.Context.Err()
+				case <-time.After(1 * time.Second):
+				}
+
+				doneCh <- struct{}{}
+
+				return nil
+			},
+			ErrFunc: func(e error) {
+				assert.ErrorIs(e, context.Canceled)
+			},
+		})
+		if err != nil {
+			t.Errorf("Unexpected errors when scheduling a valid task - %s", err)
+		}
+
+		// wait task to start execution
+		<-execStartedCh
+
+		// cancel task by deletion.
+		scheduler.Del(id)
+
+		// Make sure it doesn't run
+		select {
+		case <-doneCh:
+			t.Errorf("Task executed it was supposed to be cancelled")
+			return
+		case <-time.After(2 * time.Second):
+			return
 		}
 	})
 }

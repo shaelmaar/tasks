@@ -133,6 +133,9 @@ func (s *StdScheduler) AddWithID(id string, t *Task) error {
 
 	// Add id to TaskContext
 	t.TaskContext.id = id
+	if t.TaskContext.Context == nil {
+		t.TaskContext.Context, t.TaskContext.Cancel = context.WithCancel(context.Background())
+	}
 
 	// Check id is not in use, then add to task list and start background task
 	s.Lock()
@@ -167,6 +170,9 @@ func (s *StdScheduler) Del(name string) {
 
 	// Stop the task
 	defer t.cancel()
+	if t.TaskContext.Cancel != nil {
+		defer t.TaskContext.Cancel()
+	}
 
 	t.Lock()
 	defer t.Unlock()
