@@ -30,10 +30,10 @@ func NewSimpleLogger(logger *log.Logger, level Level) *SimpleLogger {
 
 // Debug logs at LevelDebug.
 // Arguments are handled in the manner of fmt.Println.
-func (l *SimpleLogger) Debug(msg any) {
+func (l *SimpleLogger) Debug(args ...any) {
 	if l.enabled(LevelDebug) {
 		l.logger.SetPrefix(DebugPrefix)
-		l.logger.Println(msg)
+		l.logger.Println(args...)
 	}
 }
 
@@ -48,10 +48,10 @@ func (l *SimpleLogger) Debugf(format string, args ...any) {
 
 // Info logs at LevelInfo.
 // Arguments are handled in the manner of fmt.Println.
-func (l *SimpleLogger) Info(msg any) {
+func (l *SimpleLogger) Info(args ...any) {
 	if l.enabled(LevelInfo) {
 		l.logger.SetPrefix(InfoPrefix)
-		l.logger.Println(msg)
+		l.logger.Println(args...)
 	}
 }
 
@@ -66,10 +66,10 @@ func (l *SimpleLogger) Infof(format string, args ...any) {
 
 // Warn logs at LevelWarn.
 // Arguments are handled in the manner of fmt.Println.
-func (l *SimpleLogger) Warn(msg any) {
+func (l *SimpleLogger) Warn(args ...any) {
 	if l.enabled(LevelWarn) {
 		l.logger.SetPrefix(WarnPrefix)
-		l.logger.Println(msg)
+		l.logger.Println(args...)
 	}
 }
 
@@ -84,10 +84,10 @@ func (l *SimpleLogger) Warnf(format string, args ...any) {
 
 // Error logs at LevelError.
 // Arguments are handled in the manner of fmt.Println.
-func (l *SimpleLogger) Error(msg any) {
+func (l *SimpleLogger) Error(args ...any) {
 	if l.enabled(LevelError) {
 		l.logger.SetPrefix(ErrorPrefix)
-		l.logger.Println(msg)
+		l.logger.Println(args...)
 	}
 }
 
