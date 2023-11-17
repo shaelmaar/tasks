@@ -116,46 +116,34 @@ type countingLogger struct {
 
 var _ logger.Logger = (*countingLogger)(nil)
 
-func (l *countingLogger) Trace(_ any) {
+func (l *countingLogger) Debug(...any) {
 	l.Count++
 }
 
-func (l *countingLogger) Tracef(_ string, _ ...any) {
+func (l *countingLogger) Debugf(string, ...any) {
 	l.Count++
 }
 
-func (l *countingLogger) Debug(_ any) {
+func (l *countingLogger) Info(...any) {
 	l.Count++
 }
 
-func (l *countingLogger) Debugf(_ string, _ ...any) {
+func (l *countingLogger) Infof(string, ...any) {
 	l.Count++
 }
 
-func (l *countingLogger) Info(_ any) {
+func (l *countingLogger) Warn(...any) {
 	l.Count++
 }
 
-func (l *countingLogger) Infof(_ string, _ ...any) {
+func (l *countingLogger) Warnf(string, ...any) {
 	l.Count++
 }
 
-func (l *countingLogger) Warn(_ any) {
+func (l *countingLogger) Error(...any) {
 	l.Count++
 }
 
-func (l *countingLogger) Warnf(_ string, _ ...any) {
+func (l *countingLogger) Errorf(string, ...any) {
 	l.Count++
-}
-
-func (l *countingLogger) Error(_ any) {
-	l.Count++
-}
-
-func (l *countingLogger) Errorf(_ string, _ ...any) {
-	l.Count++
-}
-
-func (l *countingLogger) Enabled(_ logger.Level) bool {
-	return true
 }
