@@ -878,6 +878,60 @@ func TestRetriesOnError(t *testing.T) {
 	})
 }
 
+func TestRescheduleOnError(t *testing.T) {
+	scheduler := NewStdScheduler(StdSchedulerOptions{})
+
+	t.Run("Verify task reschedules on a specific error", func(t *testing.T) {
+		attemptsCh := make(chan struct{})
+		t.Cleanup(func() { close(attemptsCh) })
+
+		var specificErr = errors.New("some specific error")
+
+		task := &Task{
+			StartAfter: time.Now().Add(10 * time.Millisecond),
+			RunOnce:    true,
+			TaskFunc: func() error {
+				attemptsCh <- struct{}{}
+				return specificErr
+			},
+			ErrFunc: func(err error) {},
+		}
+
+		task.WithRescheduleOnError(specificErr, 100*time.Millisecond, 3)
+
+		id, err := scheduler.Add(task)
+		if err != nil {
+			t.Errorf("Unexpected errors when scheduling a valid task - %s", err)
+		}
+
+		t.Cleanup(func() {
+			scheduler.Del(id)
+		})
+
+		timer := time.NewTimer(500 * time.Millisecond)
+		defer timer.Stop()
+
+		for i := 0; i < 10; i++ {
+			select {
+			case <-attemptsCh:
+				if i > 3 {
+					t.Errorf("too many attempts (%d) for the task", i)
+				}
+
+			case <-timer.C:
+				if i > 3 {
+					return
+				}
+
+				t.Error("StdScheduler failed to execute the scheduled task run with attempts within 500 ms")
+
+				return
+			}
+		}
+
+	})
+}
+
 func TestTaskLimit(t *testing.T) {
 	scheduler := NewStdScheduler(StdSchedulerOptions{TaskLimit: 5})
 

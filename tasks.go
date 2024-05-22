@@ -117,10 +117,10 @@ type Task struct {
 	// the task self deleting.
 	RunOnce bool
 
-	// RetriesOnError if greater than 0, task will be rescheduled in case of error on execution.
+	// RetriesOnError if greater than 0, task will be rescheduled in case of an error on execution.
 	RetriesOnError int
 
-	// RetryOnErrorInterval interval for another attempt execution.
+	// RetryOnErrorInterval interval for another execution attempt.
 	RetryOnErrorInterval time.Duration
 
 	// StartAfter is used to specify a start time for the scheduler. When set, tasks will wait for the specified
@@ -151,6 +151,10 @@ type Task struct {
 	// Either ErrFunc or ErrFuncWithTaskContext must be defined. If both are defined, ErrFuncWithTaskContext will be used.
 	ErrFuncWithTaskContext func(TaskContext, error)
 
+	// rescheduleOnError allows users to define reschedule on error mechanism.
+	// If task execution returns one of specified errors, task will reset its timer to specified duration.
+	rescheduleOnError map[error]rescheduleOnErrorOpts
+
 	// timer is the internal task timer. This is stored here to provide control via main scheduler functions.
 	timer *time.Timer
 
@@ -173,6 +177,11 @@ type TaskContext struct {
 	id string
 }
 
+type rescheduleOnErrorOpts struct {
+	interval time.Duration
+	count    int
+}
+
 // safeOps safely change task's data
 func (t *Task) safeOps(f func()) {
 	t.Lock()
@@ -185,6 +194,19 @@ func (t *Task) safeOps(f func()) {
 // If the task was added with AddWithID, this will be the same as the ID provided.
 func (ctx TaskContext) ID() string {
 	return ctx.id
+}
+
+func (t *Task) WithRescheduleOnError(err error, interval time.Duration, count int) {
+	t.safeOps(func() {
+		if t.rescheduleOnError == nil {
+			t.rescheduleOnError = make(map[error]rescheduleOnErrorOpts)
+		}
+
+		t.rescheduleOnError[err] = rescheduleOnErrorOpts{
+			interval: interval,
+			count:    count,
+		}
+	})
 }
 
 // Clone will create a copy of the existing task. This is useful for creating a new task with the same properties as
@@ -206,6 +228,16 @@ func (t *Task) Clone() *Task {
 		task.cancel = t.cancel
 		task.timer = t.timer
 		task.TaskContext = t.TaskContext
+
+		if t.rescheduleOnError == nil {
+			return
+		}
+		rescheduleOnError := make(map[error]rescheduleOnErrorOpts, len(t.rescheduleOnError))
+		for k, v := range t.rescheduleOnError {
+			rescheduleOnError[k] = v
+		}
+		task.rescheduleOnError = rescheduleOnError
 	})
+
 	return task
 }
