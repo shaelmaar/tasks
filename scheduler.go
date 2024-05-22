@@ -278,24 +278,7 @@ func (s *StdScheduler) execTask(t *Task) {
 		deleteTask := true
 
 		if err != nil {
-			logger.Errorf("task (id: %s, retries left: %d) failed: %s", t.id, t.RetriesOnError, err.Error())
-
-			if t.ErrFuncWithTaskContext != nil {
-				go t.ErrFuncWithTaskContext(t.TaskContext, err)
-			} else {
-				go t.ErrFunc(err)
-			}
-
-			if t.RunOnce && t.RetriesOnError > 0 {
-				deleteTask = false
-
-				t.safeOps(func() {
-					t.RetriesOnError--
-					t.timer.Reset(t.RetryOnErrorInterval)
-				})
-			} else {
-				deleteTask = true
-			}
+			deleteTask = onTaskError(t, err)
 		} else {
 			logger.Debugf("task (id: %s) has been successfully executed", t.id)
 		}
@@ -320,4 +303,62 @@ func (s *StdScheduler) unlockSem() {
 	if s.taskSem != nil {
 		<-s.taskSem
 	}
+}
+
+func onTaskError(t *Task, err error) (deleteTask bool) {
+	if rescheduleExists := rescheduleTaskOnError(t, err); rescheduleExists {
+		return deleteTask
+	}
+
+	logger.Errorf("task (id: %s, retries left: %d) failed: %s", t.id, t.RetriesOnError, err.Error())
+
+	if t.ErrFuncWithTaskContext != nil {
+		go t.ErrFuncWithTaskContext(t.TaskContext, err)
+	} else {
+		go t.ErrFunc(err)
+	}
+
+	if t.RunOnce && t.RetriesOnError > 0 {
+		deleteTask = false
+
+		t.safeOps(func() {
+			t.RetriesOnError--
+			t.timer.Reset(t.RetryOnErrorInterval)
+		})
+	} else {
+		deleteTask = true
+	}
+
+	return deleteTask
+}
+
+func rescheduleTaskOnError(t *Task, err error) (exists bool) {
+	if len(t.rescheduleOnError) == 0 {
+		return exists
+	}
+
+	for e, opts := range t.rescheduleOnError {
+		if !errors.Is(err, e) {
+			continue
+		}
+
+		exists = true
+
+		if opts.count <= 0 {
+			break
+		}
+
+		opts.count--
+		t.safeOps(func() {
+			t.timer.Reset(opts.interval)
+			t.rescheduleOnError[e] = opts
+		})
+
+		logger.Infof("task (id: %s) has been rescheduled on error: %s, reschedules left: %d",
+			t.id, err.Error(), opts.count)
+
+		exists = true
+	}
+
+	return exists
 }
